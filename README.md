@@ -141,3 +141,6 @@ AGENT : You currently have 12 vacation days remaining.
 USER : File a time off request for 5 days starting from 2025-05-05
 AGENT : The time off request for Alice has been successfully filed.
 ```
+
+## References
+* [GitHub's Markdown](https://github.com/LinkedInLearning/hands-on-ai-building-ai-agents-with-model-context-protocol-mcp-and-agent2agent-a2a-6055298/codespaces)
