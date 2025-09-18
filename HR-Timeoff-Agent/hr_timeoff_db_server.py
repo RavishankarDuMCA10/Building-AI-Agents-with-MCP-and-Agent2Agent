@@ -1,117 +1,66 @@
-import sqlite3
-from datetime import datetime
+import os
+from dotenv import load_dotenv
+from fastmcp import FastMCP
 
-#-----------------------------------------------------------------------------------------------------
-# Class that provides initialization and CRUD operations for a time-off
-# database using SQLite.
-#-----------------------------------------------------------------------------------------------------
+from hr_timeoff_datastore import TimeOffDatastore
 
-class TimeOffDatastore:
-    # Initialize the database connection, create tables and seed data
-    def __init__(self, db_path=":memory:"):
-        print("Initializing TimeoffDatastore")
-        self.conn = sqlite3.connect(db_path)
-        print("Creating tables and seeding data")
-        self.create_tables()
-        self.seed_data()
+#-----------------------------------------------------------------------------------
+# Setup the MCP Server
+#-----------------------------------------------------------------------------------
+load_dotenv()
+timeoff_mcp = FastMCP("HR-Timeoff-MCP-Server")
 
+#-----------------------------------------------------------------------------------
+# Initialize the Timeoff Datastore
+#-----------------------------------------------------------------------------------
 
-    # Create tables for employee and timeoff history
-    def create_tables(self):
-        cursor = self.conn.cursor()
+timeoff_db = TimeOffDatastore()
 
-        # employee table tracks time off balance also
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS employee (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        name TEXT UNIQUE NOT NULL,
-                        allowed_days INTEGER NOT NULL,
-                        consumed_days INTEGER NOT NULL DEFAULT 0
-                        )
-        ''')
+#Tool to get time off balance for an employee
+@timeoff_mcp.tool()
+def get_timeoff_balance(employee_name: str) -> str:
+    """Get the timeoff balance for the employee, given their name"""
 
-        # timeoff_history table tracks time off requests
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS timeoff_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                employee_id INTEGER NOT NULL,
-                start_day TEXT NOT NULL,
-                total_days INTEGER NOT NULL,
-                FOREIGN KEY (employee_id) REFERENCES employee (id)
-            )
-        ''')
-        self.conn.commit()
+    print("Getting timeoff balance for employee:", employee_name)
+    return timeoff_db.get_timeoff_balance(employee_name=employee_name)
 
-    # Seed the database with inital data
-    def seed_data(self):
-        cursor = self.conn.cursor()
-        # Insert sample employees if not already present
-        employees = [
-            ("Alice", 20, 5),
-            ("Bob", 15, 3),
-            ("Charlie", 25, 10)
-        ]
-
-        for name, allowed, consumed in employees:
-            cursor.execute('''
-                INSERT OR IGNORE INTO employee (name, allowed_days, consumed_days)
-                VALUES (?, ?, ?)
-            ''', (name, allowed, consumed))
-        self.conn.commit()
-
-
-    # Get timeoff balance for a specific employee
-    def get_timeoff_balance(self, employee_name):
-        cursor = self.conn.cursor()
-        cursor.execute('''
-            SELECT allowed_days, consumed_days FROM employee WHERE name = ?
-        ''', (employee_name,))
-
-        row = cursor.fetchone()
-        print("Row fetched:", row)
-        if row:
-            allowed, consumed = row
-            return allowed - consumed
-        else:
-            return None
-        
-    # Add a timeoff request for an employee
-    # This function checks if the employee has enough timeoff balance
-    # and updates the timeoff history and employee's consumed days
-    def add_timeoff_request(self, employee_name, start_day, total_days):
-        cursor = self.conn.cursor()
-
-        # Find employee ID and current consumed_days
-        cursor.execute('''
-            SELECT id, allowed_days, consumed_days FROM employee WHERE name = ?
-        ''', (employee_name,))
-
-        row = cursor.fetchone()
-        print("Row fetched: ", row)
-        if not row:
-            raise ValueError("Employee not found")
-        emp_id, allowed, consumed = row
-        if consumed + total_days > allowed:
-            raise ValueError("Not enough timeoff balance")
-        
-        # Insert into timeoff_history
-        cursor.execute('''
-            INSERT INTO timeoff_history (employee_id, start_day, total_days)
-            VALUES (?, ?, ?)''', (emp_id, start_day, total_days))
-        
-        # Update consumed_days 
-        cursor.execute('''
-            UPDATE employee SET consumed_days = consumed_days + ?
-            WHERE id = ?''', (total_days, emp_id))
-        
-        self.conn.commit()
-        return "Successfully added timeoff request"
+#Tool to add a time off request for an employee
+@timeoff_mcp.tool()
+def request_timeoff(employee_name: str, start_day:str, days: int) -> str:
+    """File a  timeoff request for the employee, 
+        given their name, start day and number of days"""
     
+    print("Requesting timeoff for employee:", employee_name)
+    return timeoff_db.add_timeoff_request(employee_name, start_day, days)
 
-# Example usage:
-if __name__ == "__main__":
-    ds = TimeOffDatastore()
-    print("Alice's balance:", ds.get_timeoff_balance("Alice"))
-    ds.add_timeoff_request("Alice", "2024-06-10", 2)
-    print("Alice's balance after request:", 
-            ds.get_timeoff_balance("Alice"))
+#Get prompt for the LLM to use to answer the query
+@timeoff_mcp.prompt()
+def get_llm_prompt(user:str, prompt: str) -> str:
+    """Generates a a prompt for the LLM to use to answer the query
+    give a user and a query"""
+    print("Generating prompt for user:", user)
+    return f"""
+        You are a helpful timeoff assistant.
+        Execute the action requested in the query using the tolls provided to you.
+        Action: {prompt}
+        The tasks need to be executed in terms of the user {user}
+    """
+
+
+#-----------------------------------------------------------------------------------
+# Run the Timeoff Server
+#-----------------------------------------------------------------------------------
+
+# Test code
+#print("Time off balance for Alice: ", get_timeoff_balance("Alice"))
+#print("Add time off request for Alice: ", request_timeoff("Alice", "2025-05-05",5))
+#print("New Time off balance for Alice: ", get_timeoff_balance("Alice"))
+
+if __name__ == "__main__":    
+    timeoff_mcp.run(
+        transport="streamable-http",
+        host="localhost",
+        port=8000,
+        path="/mcp",
+        log_level="debug"
+    )
