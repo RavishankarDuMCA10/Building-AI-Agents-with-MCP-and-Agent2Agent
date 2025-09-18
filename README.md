@@ -143,4 +143,4 @@ AGENT : The time off request for Alice has been successfully filed.
 ```
 
 ## References
-* [GitHub's Markdown](https://github.com/LinkedInLearning/hands-on-ai-building-ai-agents-with-model-context-protocol-mcp-and-agent2agent-a2a-6055298/codespaces)
+* [GitHub's Reference course](https://github.com/LinkedInLearning/hands-on-ai-building-ai-agents-with-model-context-protocol-mcp-and-agent2agent-a2a-6055298/codespaces)
